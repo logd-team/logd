@@ -1,0 +1,18 @@
+{
+    "access":{
+        "columns": ["", "event_product", "event_time", "event_hour", "", "event_ip", "event_ipinlong", "", "", "", "event_baiduid", "event_userid", "event_cookie", "event_referer", "event_useragent", "event_url", "event_urlpath", "event_urlparams", "", "event_httpstatus", "event_others", "event_isspider", "event_spiderdetail", "", "", "", "", "", "", "globalhao123_httpmethod", "globalhao123_httpversion", "globalhao123_tn", "globalhao123_level", "globalhao123_page", "globalhao123_flashid", "globalhao123_bdtime", "globalhao123_ftime", "globalhao123_bddate", "globalhao123_fdate", "globalhao123_bdhour", "globalhao123_fhour", "globalhao123_bdminute", "globalhao123_fminute"], 
+        "partitions": ["event_day", "globalhao123_host", "globalhao123_type"]
+    },
+    "click": {
+        "columns": ["", "event_product", "event_time", "event_hour", "", "event_ip", "event_ipinlong", "", "", "", "event_baiduid", "event_userid", "event_cookie", "event_referer", "event_useragent", "event_url", "event_urlpath", "event_urlparams", "", "event_httpstatus", "event_others", "event_isspider", "event_spiderdetail", "", "", "", "", "", "", "globalhao123_httpmethod", "globalhao123_httpversion", "globalhao123_tn", "globalhao123_level", "globalhao123_page", "globalhao123_flashid", "globalhao123_bdtime", "globalhao123_ftime", "globalhao123_bddate", "globalhao123_fdate", "globalhao123_bdhour", "globalhao123_fhour", "globalhao123_bdminute", "globalhao123_fminute", "globalhao123click_sort", "globalhao123click_position", "globalhao123click_value"], 
+    "partitions": ["event_day", "globalhao123_host", "globalhao123_type"]
+    },
+    "open": {
+        "columns": ["event_time", "", "event_ip", "event_ipinlong", "", "", "", "event_baiduid", "event_userid", "event_cookie", "event_referer", "event_useragent", "event_url", "event_urlpath", "event_urlparams", "", "event_httpstatus", "event_others", "event_isspider", "event_spiderdetail", "", "", "", "", "", "", "globalhao123_httpmethod", "globalhao123_httpversion", "globalhao123_tn", "globalhao123_level", "globalhao123_page", "globalhao123_channel", "globalhao123_flashid", "globalhao123_bdtime", "globalhao123_ftime", "globalhao123_bddate", "globalhao123_fdate", "globalhao123_bdhour", "globalhao123_fhour", "globalhao123_bdminute", "globalhao123_fminute", "globalhao123click_position", "globalhao123click_sort", "globalhao123click_value", "globalhao123click_url", "globalhao123open_appid"], 
+        "partitions": ["event_action", "event_day", "event_hour", "event_product", "globalhao123_host", "globalhao123_type"]
+    },
+    "others": {
+        "columns": ["", "event_product", "event_time", "event_hour", "", "event_ip", "event_ipinlong", "", "", "", "event_baiduid", "event_userid", "event_cookie", "event_referer", "event_useragent", "event_url", "event_urlpath", "event_urlparams", "", "event_httpstatus", "event_others", "event_isspider", "event_spiderdetail", "", "", "", "", "", "", "globalhao123_httpmethod", "globalhao123_httpversion", "globalhao123_tn", "globalhao123_level", "globalhao123_page", "globalhao123_flashid", "globalhao123_bdtime", "globalhao123_ftime", "globalhao123_bddate", "globalhao123_fdate", "globalhao123_bdhour", "globalhao123_fhour", "globalhao123_bdminute", "globalhao123_fminute"],
+        "partitions": ["event_day", "globalhao123_host", "globalhao123_type"]
+    }
+}
