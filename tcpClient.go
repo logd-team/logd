@@ -1,9 +1,10 @@
 package main
+
 import (
-	"net"
-	"logd/lib"
-	"time"
 	"fmt"
+	"logd/lib"
+	"net"
+	"time"
 )
 
 type TcpClient struct {
@@ -25,22 +26,20 @@ func (tc TcpClient) StartLogAgentServer() {
 	listener, err := net.ListenTCP("tcp", tcpAddr)
 	lib.CheckError(err)
 
-
 	for {
 		conn, err := listener.Accept()
 		lib.CheckError(err)
 
-		go tc.handleConnnection(conn,tc.logChan)
-		
+		go tc.handleConnnection(conn, tc.logChan)
+
 	}
 }
 
-func (tc TcpClient) handleConnnection(conn net.Conn,c chan string) {
+func (tc TcpClient) handleConnnection(conn net.Conn, c chan string) {
 	defer conn.Close()
 
 	conn.SetReadDeadline(time.Now().Add(2 * time.Minute))
 	request := make([]byte, 128)
-	
 
 	//get consumer id
 	requestLen, _ := conn.Read(request)

@@ -1,21 +1,20 @@
 package lib
 
 import (
-    "fmt"
-    "sync"
-    // "time"
-    "container/list"
+	"fmt"
+	"sync"
+	// "time"
+	"container/list"
 )
-
 
 type GlobalList struct {
 	list *list.List
-	m *sync.Mutex
+	m    *sync.Mutex
 	// once sync.Once
 }
 
 func GlobalListInit() (globalList *GlobalList) {
-	
+
 	globalList = new(GlobalList)
 	globalList.list = list.New()
 	globalList.m = new(sync.Mutex)
@@ -28,21 +27,21 @@ func GlobalListInit() (globalList *GlobalList) {
 // var once sync.Once
 
 func (gl *GlobalList) Setup() {
-	for i:=10;i<20;i++ {
+	for i := 10; i < 20; i++ {
 		gl.list.PushBack(i)
 	}
 	fmt.Println("setup over")
 }
 
 func (gl *GlobalList) Remove() (e *list.Element) {
-	
+
 	gl.m.Lock()
 	// var result int
 	if gl.list.Len() > 0 {
 		e = gl.list.Front()
 		// result = front.Value.(int)
 		gl.list.Remove(e)
-	}else {
+	} else {
 		e = nil
 	}
 	// fmt.Println("gl len:",gl.list.Len())
@@ -52,7 +51,7 @@ func (gl *GlobalList) Remove() (e *list.Element) {
 }
 
 func (gl *GlobalList) PushBack(v interface{}) {
-	
+
 	gl.m.Lock()
 	gl.list.PushBack(v)
 	gl.m.Unlock()
