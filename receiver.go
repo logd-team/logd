@@ -32,6 +32,7 @@ func ReceiverInit(buffer chan bytes.Buffer, c chan string, listBufferSize int, n
 	return r
 }
 
+//将logList中的内容全部取出来，通过zlib压缩，并转为bytes.Buffer后返回
 func (r Receiver) clearList() (b bytes.Buffer) {
 	var result bytes.Buffer
 	for r.logList.Len() > 0 {
@@ -65,7 +66,7 @@ func (r Receiver) writeList() {
 
 	st := time.Now()
 	var nLines = 0
-	var id = r.initId()
+	var id = r.initId() //recevie当前pack包的编号，每小时重新从1开始计数
 	ip := lib.GetIp()
 	var changed = false
 	var hourFmt = "2006010215"
@@ -77,11 +78,11 @@ func (r Receiver) writeList() {
 
 		if logLine == "logfile changed" {
 			changed = true
-		} else {
+		} else {//从receiveChan中拿到log,当如logList中
 			r.logList.PushBack(logLine)
 		}
 		nLines = r.logList.Len()
-		//达到指定行数或发现日志rotate
+		//当lostList达到listBufferSize指定的行数或发现日志rotate(每小时最后的一个包)
 		//因此每小时只有最后一个包比listBufferSize小
 		//如果quit时包小于listBufferSize就丢弃，重启后再读
 		if nLines >= r.listBufferSize || (nLines > 0 && changed) {
@@ -105,9 +106,9 @@ func (r Receiver) writeList() {
 				m["done"] = "1"
 			}
 
-			vbytes := tcp_pack.Packing(b.Bytes(), m, false)
-			b.Reset()
-			b.Write(vbytes)
+			vbytes := tcp_pack.Packing(b.Bytes(), m, false) //将压缩后的日志b和路由信息m一起打包
+			b.Reset() //清空以便于重用b
+			b.Write(vbytes) //将pack后的vbytes写入b
 			r.sendBuffer <- b
 			id++
 			st = time.Now()

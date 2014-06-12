@@ -86,7 +86,7 @@ func ExtractHeader(data []byte) (PackHeader, int, error) {
 	var l = uint64(0)
 	if len(data) > 4 {
 		buf := data[0:4]
-		l, _ = binary.Uvarint(buf)
+		l, _ = binary.Uvarint(buf)//获取header长度
 		//header
 		buf = data[4 : 4+l]
 		err = json.Unmarshal(buf, &header)
