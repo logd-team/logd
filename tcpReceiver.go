@@ -12,7 +12,6 @@ import (
 	"io/ioutil"
     "os"
     //"os/signal"
-    //"syscall"
     "sync"
     "encoding/binary"
     "encoding/json"
