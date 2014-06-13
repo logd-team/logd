@@ -6,7 +6,6 @@ import (
     "logd/loglib"
 	"time"
 	"fmt"
-	// "compress/zlib"
 	"bytes"
     "strings"
 	"io/ioutil"
