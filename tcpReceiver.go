@@ -11,7 +11,6 @@ import (
     "strings"
 	"io/ioutil"
     "os"
-    //"os/signal"
     "sync"
     "encoding/binary"
     "encoding/json"
