@@ -92,7 +92,7 @@ func collectorGo(cfg map[string]map[string]string) {
 	if len(addrs) > 1 {
 		bakAddr = addrs[1]
 	}
-	for i := 1; i <= 50; i++ {
+	for i := 1; i <= cfg["collector"]["sender_num"]; i++ {
 		s := SenderInit(bufferChan, addr, bakAddr, i)
 		go s.Start()
 		qlst.Append(s.Quit)
