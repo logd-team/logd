@@ -198,7 +198,7 @@ outer:
             buf := make([]byte, 4)
             _, err := conn.Read(buf)
             if err != nil {
-                loglib.Error(fmt.Sprintf("conn:%s, get header len, tcp receiver read error:%s, elapse:%s", inAddr, err.Error(), time.Now().Sub(time1)))
+                loglib.Warning(fmt.Sprintf("conn:%s, get header len, tcp receiver read error:%s, elapse:%s", inAddr, err.Error(), time.Now().Sub(time1)))
                 break
             }
             l, _ := binary.Uvarint(buf)
@@ -208,7 +208,7 @@ outer:
             time2 := time.Now()
             _, err = conn.Read(headerBuf)
             if err != nil {
-                loglib.Error(fmt.Sprintf("conn:%s, get header, tcp receiver read error:%s, elapse:%s", inAddr, err.Error(), time.Now().Sub(time2)))
+                loglib.Warning(fmt.Sprintf("conn:%s, get header, tcp receiver read error:%s, elapse:%s", inAddr, err.Error(), time.Now().Sub(time2)))
                 break
             }
             
@@ -235,7 +235,7 @@ outer:
             b = new(bytes.Buffer)
             content = new(bytes.Buffer)
 
-            loglib.Info(fmt.Sprintf("conn:%s, start receive pack %s, pack len:%d, header len:%d", inAddr, packId, packLen, headerLen))
+            loglib.Info(fmt.Sprintf("conn:%s, start receive pack %s, pack len:%d, header len:%d, header elapse:%s", inAddr, packId, packLen, headerLen, time.Now().Sub(time1)))
             b.Write(buf)
 
             routeInfo["ip"] = lib.GetIp()
@@ -263,7 +263,7 @@ outer:
             //收完马上应答
             _, err := conn.Write([]byte("ok"))
             if err != nil {
-                loglib.Error(fmt.Sprintf("ip:%s, packid:%s received, but response back error:%s", inIp, packId, err.Error()))
+                loglib.Warning(fmt.Sprintf("ip:%s, packid:%s received, but response back error:%s", inIp, packId, err.Error()))
             }else{
                 loglib.Info(fmt.Sprintf("conn:%s, response to packid:%s", inAddr, packId))
             }

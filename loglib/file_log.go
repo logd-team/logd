@@ -39,7 +39,7 @@ func initFileLogger(dir string) (logger *log.Logger) {
         logFile := path.Join(dir, fname)
         fout, err := os.OpenFile(logFile, os.O_RDWR | os.O_APPEND | os.O_CREATE, 0644)
         if err != nil {
-            log.Println("Open log file [" + logFile + "] failed")
+            log.Println("Open log file [" + logFile + "] failed: ", err)
         }
         logger = log.New(fout, "", log.LstdFlags | log.Lshortfile)
     }

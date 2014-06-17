@@ -3,8 +3,10 @@ package main
 import (
     "bytes"
     "time"
+    "fmt"
     "logd/heart_beat"
     "logd/lib"
+    "logd/loglib"
     "strconv"
     "strings"
 )
@@ -64,11 +66,20 @@ func tailerGo(cfg map[string]map[string]string) {
     }
 
     //加大发送并发，sender阻塞会影响tail的进度
-    for i:=1;i<=10;i++ {
+    nSenders := 2
+    senders, ok := cfg["tail"]["senders"]
+    if ok {
+        tmp, err := strconv.Atoi(senders)
+        if err == nil {
+            nSenders = tmp
+        }
+    }
+    for i:=1;i<=nSenders;i++ {
         s := SenderInit(sendBuffer, addr, bakAddr, i)
 		go s.Start()
         qlst.Append(s.Quit)
 	}
+    loglib.Info(fmt.Sprintf("total senders %d", nSenders))
 
     qlst.HandleQuitSignal()
     qlst.ExecQuit()
@@ -91,11 +102,21 @@ func collectorGo(cfg map[string]map[string]string) {
     if len(addrs) > 1 {
         bakAddr = addrs[1]
     }
-    for i:=1;i<=50;i++ {
+
+    nSenders := 10
+    senders, ok := cfg["collector"]["senders"]
+    if ok {
+        tmp, err := strconv.Atoi(senders)
+        if err == nil {
+            nSenders = tmp
+        }
+    }
+    for i:=1;i<=nSenders;i++ {
 		s := SenderInit(bufferChan, addr, bakAddr, i)
 		go s.Start()
         qlst.Append(s.Quit)
 	}
+    loglib.Info(fmt.Sprintf("total senders %d", nSenders))
 
     // heart beat
     port, _ := cfg["monitor"]["hb_port"]

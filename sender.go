@@ -2,7 +2,6 @@ package main
 import (
 	"fmt"
 	"bytes"
-	"container/list"
 	"io/ioutil"
 	"os"
 	"logd/lib"
@@ -20,12 +19,8 @@ var fileList *lib.GlobalList = lib.GlobalListInit()
 type Sender struct {
 	id int
 	sBuffer chan bytes.Buffer
-	mem_max_len int
 	file_mem_folder_name string
-	// mem_dump_to_file int
-	memCacheList *list.List
-	// fileCacheList *list.List
-	// conn *net.TCPConn
+    memBuffer chan bytes.Buffer     //sender自己的chan，用于保证sBuffer不阻塞
 	connection Connection
 	status *int
 	sendToAddress string
@@ -40,17 +35,13 @@ func SenderInit(buffer chan bytes.Buffer, addr string, bakAddr string, id int) (
 	// s = new(Sender)
 	s.id = id
 	s.sBuffer = buffer
-	s.mem_max_len = 100
+    s.memBuffer = make(chan bytes.Buffer, 20)
 	s.file_mem_folder_name = "tempfile"
     //auto make dir
     if _,err := os.Stat(s.file_mem_folder_name); err != nil && os.IsNotExist(err) {
         os.MkdirAll(s.file_mem_folder_name, 0775)
     }
-	// s.mem_dump_to_file = 3
-	s.memCacheList = list.New()
-	// s.fileCacheList = list.New()
 	s.sendToAddress = addr
-	// s.conn = s.getConnection()
 	s.connection = SingleConnectionInit(s.sendToAddress, bakAddr)
 	a := 1
 	s.status = &a
@@ -68,6 +59,20 @@ func (s *Sender) reloadFileCache() {
 		fileList.PushBack(filename)
 	}
 }
+//从公用的chan读pack到私有的chan，若私有chan已满则写入文件缓存
+//保证公用chan不会阻塞
+func (s *Sender) pickPacks() {
+    for buf := range s.sBuffer {
+        select {
+            case s.memBuffer <- buf:
+                break
+            default:
+                loglib.Info(fmt.Sprintf("sender %d mem buffer is full, total %d, pub chan:%d", s.id, len(s.memBuffer), len(s.sBuffer)))
+                s.writeToFile(buf)
+        }
+    }
+    close(s.memBuffer)
+}
 //goroutine
 func (s *Sender) Start() {
 	// conn := s.getConnection()
@@ -82,7 +87,7 @@ func (s *Sender) Start() {
 
         s.saveBufferInChan()
 
-        s.saveMemCache()
+        //s.saveMemCache()
 
         s.connection.close()
 
@@ -90,6 +95,7 @@ func (s *Sender) Start() {
 
     }()
 
+    go s.pickPacks()
     //var connLost = 0
     var quit = false
     go lib.HandleQuitSignal(func(){
@@ -97,54 +103,24 @@ func (s *Sender) Start() {
         s.connection.close()
     })
     
-    var sendInterval = time.Duration(10)
+    var sendInterval = time.Duration(2000)   //间隔稍大，避免发送文件缓存时因无连接或其他错误进入死循环
 
     var timeoutChan = time.After(sendInterval * time.Millisecond)
 	for ; !quit; {
 
 		select {
-			case b := <- s.sBuffer:
+			case b := <- s.memBuffer:
 				//send b
-				//result := s.sendBuffer(b)
-				//if result == false {
-					//write to mem
-                    //改为直接放入缓存
-                if b.Len() > 0 {
-                    s.insertToMemCache(b)
+				result := s.sendBuffer(b)
+				if result == false {
+                    //改为直接放入文件缓存
+                    s.writeToFile(b)
                 }
-				//}
 
-			// case <- time.After(1 * time.Millisecond):
-				//如果status<=0,将不尝试发送缓存内内容
             case <- timeoutChan :
+                timeoutChan = time.After(sendInterval * time.Millisecond)
 
-                /*
-				if *s.status <= 0 {
-                    //log.Println("status <= 0",*s.status)
-                    connLost++
-                    //减少报警次数
-                    //连续5次才报
-                    if connLost >= 20 {
-                        loglib.Info("no send connection")
-                        connLost = 0
-                    }
-					break
-				}
-                connLost = 0
-                */
-				//send mem or file data
-				if s.memCacheList.Len() > 0 { // send from mem
-					front := s.memCacheList.Front()
-					tempBuffer := front.Value.(bytes.Buffer)
-
-                    packId := tcp_pack.GetPackId(tempBuffer.Bytes())
-                    loglib.Info(fmt.Sprintf("get pack %s from mem, left %d", packId, s.memCacheList.Len()))
-					result := s.sendBuffer(tempBuffer)
-					if result == true {
-						s.memCacheList.Remove(front)
-					}
-                }
-				//}else {// send from file
+				// send from file
                 e := fileList.Remove()
                 if e != nil { // file list is not empty
                     filename := e.Value.(string)
@@ -152,7 +128,9 @@ func (s *Sender) Start() {
                     data,err := ioutil.ReadFile(filename)
                     if (err != nil) {
                         // fmt.Println("sender ",s.id,":",err)
-                        fileList.PushBack(filename)
+                        if err != os.ErrNotExist {
+                            fileList.PushBack(filename)
+                        }
                         loglib.Error(fmt.Sprintf("read file cache %s error:%s", filename, err.Error()))
                     }else{
                     
@@ -164,14 +142,13 @@ func (s *Sender) Start() {
                             // log.Println("sender ",s.id,":removed file:",filename, "for pack", packId)//debug info
                             err = os.Remove(filename)
                             lib.CheckError(err)
+                            timeoutChan = time.After(time.Millisecond)  //发送成功，不用再等待
                         }else {
                             fileList.PushBack(filename)
                             // fmt.Println("sender ",s.id,": pushback file :",filename)
                         }
                     }
                 }
-				//}
-                timeoutChan = time.After(sendInterval * time.Millisecond)
 
 		}
 	}
@@ -185,54 +162,11 @@ func (s *Sender) Quit() bool {
 func (s *Sender) saveBufferInChan() {
     loglib.Info(fmt.Sprintf("sender %d begin to save pack in chan", s.id))
     i := 0
-    for b := range s.sBuffer {
+    for b := range s.memBuffer {
 		s.writeToFile(b)
         i++
     }
     loglib.Info(fmt.Sprintf("sender %d saved num of pack in chan: %d", s.id, i))
-}
-
-func (s *Sender) saveMemCache() {
-    loglib.Info(fmt.Sprintf("sender %d begin to save pack in mem cache", s.id))
-    i := 0
-    for e := s.memCacheList.Front(); e != nil; e = e.Next() {
-		tempBuffer := e.Value.(bytes.Buffer)
-		
-		//write to file
-		s.writeToFile(tempBuffer)
-        i++
-        
-    }
-    loglib.Info(fmt.Sprintf("sender %d saved num of pack in mem cache: %d", s.id, i))
-}
-
-func (s *Sender) insertToMemCache(data bytes.Buffer) {
-	//检查内存缓存
-	if (s.memCacheList.Len() >=s.mem_max_len) {//内存缓存已满,mem pop to file
-		loglib.Info(fmt.Sprintf("memCacheList len: %d writing data to tempfile", s.memCacheList.Len() ))
-		//pop a buffer
-		a := s.memCacheList.Front()
-		tempBuffer := a.Value.(bytes.Buffer)
-		
-		//write to file
-		s.writeToFile(tempBuffer)
-		
-		//remove from list
-		s.memCacheList.Remove(a)
-        
-        packId := tcp_pack.GetPackId(data.Bytes())
-
-        loglib.Info("add pack " + packId + " to mem cache")
-
-		s.memCacheList.PushBack(data)
-
-	}else {//内存缓存未满
-		// fmt.Println("memCacheList insert")
-        packId := tcp_pack.GetPackId(data.Bytes())
-
-		s.memCacheList.PushBack(data)
-        loglib.Info(fmt.Sprintf("add pack %s to mem cache, total:%d", packId, s.memCacheList.Len()))
-	}
 }
 
 func (s *Sender) writeToFile(data bytes.Buffer) {
@@ -247,7 +181,7 @@ func (s *Sender) writeToFile(data bytes.Buffer) {
     packId := tcp_pack.GetPackId(d)
 
     loglib.Info(fmt.Sprintf("save pack %s to file %s len:%d", packId, filename, len(d) ))
-	err = ioutil.WriteFile(filename, d,os.ModeTemporary)
+	err = ioutil.WriteFile(filename, d, 0666)
 	if (err != nil) {
         loglib.Error("write to file " + filename + " error:" + err.Error())
 		lib.CheckError(err)
@@ -291,7 +225,6 @@ func (s Sender) sendData(data []byte, conn *net.TCPConn) bool {
     if conn == nil {
         return false
     }
-
     /*
     lenBuf := make([]byte, 4)
     nData := len(data)
@@ -334,7 +267,7 @@ func (s Sender) sendData(data []byte, conn *net.TCPConn) bool {
             return false
         }
     }else{
-        loglib.Error(fmt.Sprintf("write pack %d error:%s", packId, err.Error()))
+        loglib.Error(fmt.Sprintf("write pack %s error:%s", packId, err.Error()))
     }
 	return false
 }

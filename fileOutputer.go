@@ -9,7 +9,7 @@ import (
     "fmt"
     "strconv"
     "encoding/binary"
-    "bufio"
+    "io"
     "path/filepath"
     "logd/integrity"
     "logd/tcp_pack"
@@ -98,14 +98,9 @@ func (f *fileOutputer) extract(bp *bytes.Buffer) {
         //一头一尾写头信息，节省硬盘
         buf = append(buf, '\n')
         fout.Write(buf)
-        scanner := bufio.NewScanner(r)
-        for scanner.Scan() {
-            line := scanner.Bytes()
-            line = append(line, '\n')
-
-            _,err = fout.Write(line)
-            lib.CheckError(err)
-            
+        nn, err := io.Copy(fout, r)
+        if err != nil {
+            loglib.Warning(fmt.Sprintf("save %s_%s_%s error:%s, saved:%d", header["ip"], header["hour"], header["id"], err, nn))
         }
         fout.Write(buf)
 

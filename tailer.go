@@ -151,7 +151,7 @@ func (tlr *Tailler) Tailling(receiveChan chan string){
                     if tlr.lineNum >= totalLines {
                         done = true
                     }
-                    if done || i > 120 {
+                    if done || i > 60 {
                         if cmd.Process != nil {
                             cmd.Process.Kill() //关闭tail命令，不然读取循环无法终止
                         }
@@ -163,7 +163,7 @@ func (tlr *Tailler) Tailling(receiveChan chan string){
                         break
                     }
                     i++
-                    time.Sleep(1 * time.Second)
+                    time.Sleep(time.Second)
                 }
                 fInfo = newInfo
                 realFile, _ = filepath.EvalSymlinks(path)

@@ -10,7 +10,7 @@ import (
     "path/filepath"
     "baidu.com/etl"
     "logd/lib"
-    "bufio"
+    "io"
     "sync"
     "time"
     "logd/tcp_pack"
@@ -103,6 +103,7 @@ func (e *etlOutputer) runEtl(spiderList string, colsFile string) {
     nextCheckTime := time.Now().Add(10 * time.Minute)
     //使用range遍历，方便安全退出，只要发送方退出时关闭chan，这里就可以退出了
     for b := range e.buffer {
+        loglib.Info(fmt.Sprintf("pack in chan: %d", len(e.buffer)))
         buf := make([]byte, 4) 
         bp := &b
         bp.Read(buf)
@@ -136,13 +137,9 @@ func (e *etlOutputer) runEtl(spiderList string, colsFile string) {
                 loglib.Info(fmt.Sprintf("write %s %d %s", writerKey, n, err.Error()))
             }
             */
-            scanner := bufio.NewScanner(r)
-            for scanner.Scan() {
-                line := scanner.Bytes()
-                line = append(line, '\n')
-
-                _,err = fout.Write(line)
-                lib.CheckError(err)
+            nn, err := io.Copy(fout, r)
+            if err != nil {
+                loglib.Warning(fmt.Sprintf("save %s_%s_%s error:%s, saved:%d", header["ip"], header["hour"], header["id"], err, nn))
             }
             //fout.Write(buf)
             //单独存一份header便于查数

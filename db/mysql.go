@@ -36,7 +36,11 @@ func NewMysql(host string, port string, uname string, passwd string, db string, 
 
 func (my *Mysql) Query(sqlStr string, args ...interface{} ) (*MysqlResult, error) {
     rows, err := my.db.Query(sqlStr, args...)
-    defer rows.Close()
+    defer func(){
+        if rows != nil {
+            rows.Close()
+        }
+    }()
 
     result := new(MysqlResult)
     if err != nil {
