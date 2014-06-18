@@ -128,7 +128,7 @@ func (s *Sender) Start() {
                     data,err := ioutil.ReadFile(filename)
                     if (err != nil) {
                         // fmt.Println("sender ",s.id,":",err)
-                        if err != os.ErrNotExist {
+                        if _, ok := err.(*os.PathError); !ok {
                             fileList.PushBack(filename)
                         }
                         loglib.Error(fmt.Sprintf("read file cache %s error:%s", filename, err.Error()))
@@ -185,11 +185,10 @@ func (s *Sender) writeToFile(data bytes.Buffer) {
 	if (err != nil) {
         loglib.Error("write to file " + filename + " error:" + err.Error())
 		lib.CheckError(err)
-	}
-
-	//追加fileCacheList
-	fileList.PushBack(filename)
-
+	}else{
+        //追加fileCacheList
+        fileList.PushBack(filename)
+    }
 }
 
 

@@ -132,7 +132,7 @@ func collectorGo(cfg map[string]map[string]string) {
 }
 
 func fcollectorGo(cfg map[string]map[string]string) {
-	bufferChan := make(chan bytes.Buffer, 500)
+	bufferChan := make(chan bytes.Buffer, 100)
 	addr := cfg["fcollector"]["listen"]
 
 	fo := FileOutputerInit(bufferChan, cfg["fcollector"]["save_dir"])
@@ -162,7 +162,7 @@ func fcollectorGo(cfg map[string]map[string]string) {
 func etlcollectorGo(cfg map[string]map[string]string) {
     qlst := lib.NewQuitList()
 
-	bufferChan := make(chan bytes.Buffer, 500)
+	bufferChan := make(chan bytes.Buffer, 100)
 	addr := cfg["etlcollector"]["listen"]
 
 	eo := EtlOutputerInit(bufferChan, cfg["etlcollector"])

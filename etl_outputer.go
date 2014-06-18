@@ -89,17 +89,22 @@ func (e *etlOutputer) Quit() bool {
 
 func (e *etlOutputer) runEtl(spiderList string, colsFile string) {
     wg := &sync.WaitGroup{}
-
+    fkeyChan := make(chan string, 100)
     defer func(){
         if err := recover(); err != nil {
             loglib.Error(fmt.Sprintf("runEtl() panic:%v", err))
         }
-
+        
         e.ic.SaveStatus()
+        close(fkeyChan)
         //等待etl routine结束
         wg.Wait()
     }()
 
+    for i:=0; i<2; i++ {
+        wg.Add(1)
+        go e.doEtl(fkeyChan, e.dataDir, e.etlDir, e.etlDoneDir, e.etlFailDir, spiderList, colsFile, wg)
+    }
     nextCheckTime := time.Now().Add(10 * time.Minute)
     //使用range遍历，方便安全退出，只要发送方退出时关闭chan，这里就可以退出了
     for b := range e.buffer {
@@ -156,8 +161,8 @@ func (e *etlOutputer) runEtl(spiderList string, colsFile string) {
                         writerKey = ip + "_" + hour
                         e.closeWriter(e.writers, writerKey)
                         e.closeWriter(e.headerWriters, writerKey)
-                        wg.Add(1)
-                        go e.doEtl(writerKey, e.dataDir, e.etlDir, e.etlDoneDir, e.etlFailDir, spiderList, colsFile, wg)
+                        loglib.Info(fmt.Sprintf("fkeychan %d", len(fkeyChan)))
+                        fkeyChan <- writerKey
                     }
                 }
                 nextCheckTime = time.Now().Add(10 * time.Minute)
@@ -192,7 +197,7 @@ func (e *etlOutputer) closeWriter(writers map[string]*os.File, key string) {
     }
 }
 
-func (e *etlOutputer) doEtl(fkey string, logDataDir string, etlDir string, etlDoneDir string, etlFailDir string, spiderList string, colsFile string, wg *sync.WaitGroup) {
+func (e *etlOutputer) doEtl(fkeyChan chan string, logDataDir string, etlDir string, etlDoneDir string, etlFailDir string, spiderList string, colsFile string, wg *sync.WaitGroup) {
     defer func(){
         if err := recover(); err != nil {
             loglib.Error(fmt.Sprintf("doEtl() panic:%v", err))
@@ -200,42 +205,45 @@ func (e *etlOutputer) doEtl(fkey string, logDataDir string, etlDir string, etlDo
     
         wg.Done()
     }()
-
-    d := etl.NewDispatcher(colsFile, etlDir, 10, fkey)
-    g := etl.NewGlobalHao123(spiderList, 100000, 100000, 12, d)
-    go g.Start(false)
-    
-    fname := filepath.Join(logDataDir, fkey)
-    loglib.Info("start etl for " + fname)
-
-    err := g.ParseFile(fname)
-    g.Wait()
-    // etl success
-    // mark success
-    if err == nil {
-        //采用循环，增加打tag的成功率
-        for i:=0; i<5; i++ {
-            fd, err := os.Create(filepath.Join(etlDoneDir, fkey)) 
-            if err == nil {
-                fd.Close()
-                loglib.Info("finish etl for " + fname)
-                break
-            }else{
-                loglib.Warning("mark etl done for " + fname + " failed! error: " + err.Error())
-            }
-        }
-    }else{
-        //采用循环，增加打tag的成功率
-        for i:=0; i<5; i++ {
-            fd, err := os.Create(filepath.Join(etlFailDir, fkey)) 
-            if err == nil {
-                fd.Close()
-                loglib.Info("failed etl for " + fname)
-                break
-            }else{
-                loglib.Warning("mark etl fail for " + fname + " failed! error: " + err.Error())
-            }
-        }
+    loglib.Info("etl routine start")
+    for fkey := range fkeyChan {
+        d := etl.NewDispatcher(colsFile, etlDir, 5, fkey)
+        g := etl.NewGlobalHao123(spiderList, 100, 200, 8, d)
+        go g.Start(false)
         
+        fname := filepath.Join(logDataDir, fkey)
+        loglib.Info("start etl for " + fname)
+
+        err := g.ParseFile(fname)
+        g.Wait()
+        // etl success
+        // mark success
+        if err == nil {
+            //采用循环，增加打tag的成功率
+            for i:=0; i<5; i++ {
+                fd, err := os.Create(filepath.Join(etlDoneDir, fkey)) 
+                if err == nil {
+                    fd.Close()
+                    loglib.Info("finish etl for " + fname)
+                    break
+                }else{
+                    loglib.Warning("mark etl done for " + fname + " failed! error: " + err.Error())
+                }
+            }
+        }else{
+            //采用循环，增加打tag的成功率
+            for i:=0; i<5; i++ {
+                fd, err := os.Create(filepath.Join(etlFailDir, fkey)) 
+                if err == nil {
+                    fd.Close()
+                    loglib.Info("failed etl for " + fname)
+                    break
+                }else{
+                    loglib.Warning("mark etl fail for " + fname + " failed! error: " + err.Error())
+                }
+            }
+            
+        }
     }
+    loglib.Info("etl routine finish")
 }
