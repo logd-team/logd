@@ -87,13 +87,13 @@ func (sc *SingleConnection) reconnect(conn *net.TCPConn) {
 	}else {
         tmpAddr := sc.currentAddr
 		sc.currentAddr = sc.bakAddr
-        loglib.Warning("try bakup address:" + sc.bakAddr)
+        sc.bakAddr = tmpAddr
+        sc.failedTimes = 0
+        loglib.Warning("try bakup address:" + sc.currentAddr)
 		newConn,err := createSingleConnection(sc.currentAddr)
 		if err == nil {
-            loglib.Warning("use bakup address:" + sc.bakAddr)
+            loglib.Warning("use bakup address:" + sc.currentAddr)
 			sc.conn = newConn
-			sc.failedTimes = 0
-            sc.bakAddr = tmpAddr
 		}
 	}
 
