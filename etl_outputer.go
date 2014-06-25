@@ -96,6 +96,8 @@ func (e *etlOutputer) runEtl(spiderList string, colsFile string) {
         }
         
         e.ic.SaveStatus()
+        e.closeWriters(e.writers)
+        e.closeWriters(e.headerWriters)
         close(fkeyChan)
         //等待etl routine结束
         wg.Wait()
@@ -159,12 +161,12 @@ func (e *etlOutputer) runEtl(spiderList string, colsFile string) {
                 for ip, hours := range hourFinish {
                     for _, hour := range hours {
                         writerKey = ip + "_" + hour
-                        e.closeWriter(e.writers, writerKey)
-                        e.closeWriter(e.headerWriters, writerKey)
                         loglib.Info(fmt.Sprintf("fkeychan %d", len(fkeyChan)))
                         fkeyChan <- writerKey
                     }
                 }
+                e.closeWriters(e.writers)
+                e.closeWriters(e.headerWriters)
                 nextCheckTime = time.Now().Add(10 * time.Minute)
             }
 
@@ -196,7 +198,16 @@ func (e *etlOutputer) closeWriter(writers map[string]*os.File, key string) {
         delete(writers, key)
     }
 }
+//关闭全部writer
+func (e *etlOutputer) closeWriters(writers map[string]*os.File) {
+    for key, w := range writers {
+        if w != nil {
+            w.Close()
+        }
+        delete(writers, key)
+    }
 
+}
 func (e *etlOutputer) doEtl(fkeyChan chan string, logDataDir string, etlDir string, etlDoneDir string, etlFailDir string, spiderList string, colsFile string, wg *sync.WaitGroup) {
     defer func(){
         if err := recover(); err != nil {
