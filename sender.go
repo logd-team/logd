@@ -67,7 +67,7 @@ func (s *Sender) pickPacks() {
             case s.memBuffer <- buf:
                 break
             default:
-                loglib.Info(fmt.Sprintf("sender %d mem buffer is full, total %d, pub chan:%d", s.id, len(s.memBuffer), len(s.sBuffer)))
+                loglib.Info(fmt.Sprintf("sender%d mem buffer is full, total %d, pub chan:%d", s.id, len(s.memBuffer), len(s.sBuffer)))
                 s.writeToFile(buf)
         }
     }
@@ -131,11 +131,11 @@ func (s *Sender) Start() {
                         if _, ok := err.(*os.PathError); !ok {
                             fileList.PushBack(filename)
                         }
-                        loglib.Error(fmt.Sprintf("read file cache %s error:%s", filename, err.Error()))
+                        loglib.Error(fmt.Sprintf("sender%d read file cache %s error:%s", s.id, filename, err.Error()))
                     }else{
                     
                         packId := tcp_pack.GetPackId(data)//debug info
-                        loglib.Info(fmt.Sprintf("read pack %s from file: %s, len: %d", packId, filename, len(data)))//debug info
+                        loglib.Info(fmt.Sprintf("sender%d read pack %s from file: %s, len: %d", s.id, packId, filename, len(data)))//debug info
                         result := s.sendData2(data)
                         if result == true {
                             // s.fileCacheList.Remove(front)
@@ -160,13 +160,13 @@ func (s *Sender) Quit() bool {
 }
 
 func (s *Sender) saveBufferInChan() {
-    loglib.Info(fmt.Sprintf("sender %d begin to save pack in chan", s.id))
+    loglib.Info(fmt.Sprintf("sender%d begin to save pack in chan", s.id))
     i := 0
     for b := range s.memBuffer {
 		s.writeToFile(b)
         i++
     }
-    loglib.Info(fmt.Sprintf("sender %d saved num of pack in chan: %d", s.id, i))
+    loglib.Info(fmt.Sprintf("sender%d saved num of pack in chan: %d", s.id, i))
 }
 
 func (s *Sender) writeToFile(data bytes.Buffer) {
@@ -180,7 +180,7 @@ func (s *Sender) writeToFile(data bytes.Buffer) {
 
     packId := tcp_pack.GetPackId(d)
 
-    loglib.Info(fmt.Sprintf("save pack %s to file %s len:%d", packId, filename, len(d) ))
+    loglib.Info(fmt.Sprintf("sender%d save pack %s to file %s len:%d", s.id, packId, filename, len(d) ))
 	err = ioutil.WriteFile(filename, d, 0666)
 	if (err != nil) {
         loglib.Error("write to file " + filename + " error:" + err.Error())
@@ -198,7 +198,7 @@ func (s *Sender) sendBuffer(data bytes.Buffer) bool {
 	if result == false {
 		s.connection.reconnect(s.connection.getConn())
 		*s.status = -1
-		loglib.Info(fmt.Sprintf("reconnected by sendBuffer(),status:%d",*s.status))
+		loglib.Info(fmt.Sprintf("sender%d reconnected by sendBuffer(),status:%d",s.id, *s.status))
 	}else {
 		*s.status = 1
 	}
@@ -211,7 +211,7 @@ func (s *Sender) sendData2(data []byte) bool {
 	if result == false {
 		s.connection.reconnect(s.connection.getConn())
 		*s.status = -1
-		loglib.Info(fmt.Sprintf("reconnected by sendData2(),status:%d",*s.status))
+		loglib.Info(fmt.Sprintf("sender%d reconnected by sendData2(),status:%d", s.id, *s.status))
 	}
 	return result
 }
@@ -235,10 +235,10 @@ func (s Sender) sendData(data []byte, conn *net.TCPConn) bool {
     packId := tcp_pack.GetPackId(data)
 
     conn.SetDeadline(time.Now().Add(5 * time.Minute))  //设置超时
-    loglib.Info(fmt.Sprintf("start sending pack:%s length:%d", packId, len(data)))
+    loglib.Info(fmt.Sprintf("sender%d start sending pack:%s length:%d", s.id, packId, len(data)))
 	n,err := conn.Write(data)
     ed := time.Now()
-    loglib.Info(fmt.Sprintf("end sending pack:%s length:%d elapse:%s", packId, n, ed.Sub(st)) )
+    loglib.Info(fmt.Sprintf("sender%d end sending pack:%s length:%d elapse:%s", s.id, packId, n, ed.Sub(st)) )
 
 	lib.CheckError(err)
 
@@ -249,9 +249,9 @@ func (s Sender) sendData(data []byte, conn *net.TCPConn) bool {
         var temp []byte = make([]byte,128)
         count,err := conn.Read(temp)
         if err == nil {
-            loglib.Info(fmt.Sprintf("get anwser data len:%d for pack:%s elapse:%s", count, packId, time.Now().Sub(time1)))
+            loglib.Info(fmt.Sprintf("sender%d get anwser data len:%d for pack:%s elapse:%s", s.id, count, packId, time.Now().Sub(time1)))
         }else{
-            loglib.Info(fmt.Sprintf("get anwser data len:%d for pack:%s elapse:%s, error:%s", count, packId, time.Now().Sub(time1), err.Error()))
+            loglib.Info(fmt.Sprintf("sender%d get anwser data len:%d for pack:%s elapse:%s, error:%s", s.id, count, packId, time.Now().Sub(time1), err.Error()))
         }
 
         temp = temp[:count]

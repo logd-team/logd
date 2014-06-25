@@ -170,7 +170,7 @@ func (t *TcpReceiver) handleConnnection (conn net.Conn, wg *sync.WaitGroup) {
         quit = true
     })
 
-    request := make([]byte, 10240 * 1024) //包最大为10m
+    request := make([]byte, 512 * 1024) //缓冲为512k
     
     var packLen int = 0 
     currLen := 0

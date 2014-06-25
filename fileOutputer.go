@@ -13,6 +13,7 @@ import (
     "path/filepath"
     "logd/integrity"
     "logd/tcp_pack"
+    "time"
 )
 
 type fileOutputer struct {
@@ -25,6 +26,7 @@ type fileOutputer struct {
     writers map[string]*os.File    //存日志的fd
     headerWriters map[string]*os.File   //存header的fd
     ic *integrity.IntegrityChecker
+    checkTime time.Time
 
     wq *lib.WaitQuit
 }
@@ -45,6 +47,7 @@ func FileOutputerInit(buffer chan bytes.Buffer, saveDir string) (f fileOutputer)
 
     f.writers = make(map[string]*os.File)
     f.headerWriters = make(map[string]*os.File)
+    f.checkTime = time.Now().Add(10 * time.Minute)
 
     f.wq = lib.NewWaitQuit("file outputer")
 	return f
@@ -108,7 +111,7 @@ func (f *fileOutputer) extract(bp *bytes.Buffer) {
         fout = f.getWriter(f.headerWriters, f.headerDir, writerKey)
         fout.Write(buf)
 
-        if done {
+        if done  || time.Now().Unix() > f.checkTime.Unix() {
             hourFinish, _ := f.ic.Check()
             for ip, hours := range hourFinish {
                 for _, hour := range hours {
@@ -117,6 +120,7 @@ func (f *fileOutputer) extract(bp *bytes.Buffer) {
                     f.closeWriter(f.headerWriters, writerKey)
                 }
             }
+            f.checkTime.Add(10 * time.Minute)
         }
 
         r.Close()
