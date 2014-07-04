@@ -85,12 +85,12 @@ func (r Receiver) writeList() {
         //达到指定行数或发现日志rotate
         //因此每小时只有最后一个包比listBufferSize小
         //如果quit时包小于listBufferSize就丢弃，重启后再读
-		if nLines >= r.listBufferSize || (nLines > 0 && changed ) {
+		if nLines >= r.listBufferSize || changed {
 			b := r.clearList()
 			//r.sendBuffer <- b
             ed := time.Now()
             elapse := ed.Sub(st)
-            loglib.Info(fmt.Sprintf("add a pack, id: %s_%d elapse: %s", hour, id, elapse))
+            loglib.Info(fmt.Sprintf("add a pack, id: %s_%d, lines:%d, elapse: %s", hour, id, nLines, elapse))
 
             //route信息
             m := make(map[string]string)
@@ -104,6 +104,11 @@ func (r Receiver) writeList() {
             m["elapse"] = elapse.String()
             if changed {
                 m["done"] = "1"
+                //这种空包用于给那些日志行数正好是listBufferSize倍数的小时标记结束
+                //设置repull为1以便空包能够不被拦截
+                if nLines == 0 {
+                    m["repull"] = "1"
+                }
             }
 
             vbytes := tcp_pack.Packing(b.Bytes(), m, false)

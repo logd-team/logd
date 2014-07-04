@@ -5,13 +5,16 @@ import (
     "time"
     "os"
     "path"
+    "sync"
 )
 
 type FileLog struct{
     logger *log.Logger 
+    fout *os.File
     level int
     dir string
     dateStr string
+    mutex *sync.Mutex
 }
 
 
@@ -25,34 +28,45 @@ func NewFileLog(dir string, level int) *FileLog {
             }
         }
     }
-    logger := initFileLogger(dir)
+    logger, fout := initFileLogger(dir)
     dateStr := time.Now().Format("20060102")
-    return &FileLog{logger:logger, dir:dir, level: level, dateStr: dateStr}
+    mutex := &sync.Mutex{}
+    return &FileLog{logger:logger, fout:fout, dir:dir, level: level, dateStr: dateStr, mutex:mutex}
 }
 
-func initFileLogger(dir string) (logger *log.Logger) {
+func initFileLogger(dir string) (logger *log.Logger, w *os.File) {
     //增加输出到标准输出，便于程序调试
     if dir == "-" {
         logger = log.New(os.Stdout, "", log.LstdFlags)
+        w = os.Stdout
     }else{
         var fname = "logd.log." + time.Now().Format("20060102")
         logFile := path.Join(dir, fname)
         fout, err := os.OpenFile(logFile, os.O_RDWR | os.O_APPEND | os.O_CREATE, 0644)
         if err != nil {
             log.Println("Open log file [" + logFile + "] failed: ", err)
+        }else{
+            logger = log.New(fout, "", log.LstdFlags | log.Lshortfile)
+            w = fout
         }
-        logger = log.New(fout, "", log.LstdFlags | log.Lshortfile)
     }
-    return logger
+    return logger, w
 }
 
 func (l *FileLog) logging(level int, msg string) {
     if level >= 0  && level < len(prefixes) {
         if l.dir != "-" {
             dateStr := time.Now().Format("20060102")
+            l.mutex.Lock()
             if dateStr != l.dateStr {
-                l.logger = initFileLogger(l.dir)   //自动切割
+                logger, fout := initFileLogger(l.dir)   //自动切割
+                if logger != nil && fout != nil {       //出错则不切割
+                    l.fout.Close()
+                    l.dateStr = dateStr
+                    l.logger, l.fout = logger, fout
+                }
             }
+            l.mutex.Unlock()
         }
         l.logger.Println("[" + prefixes[level] + "] " + msg)
     }    

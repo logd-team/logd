@@ -100,12 +100,12 @@ func (f *fileOutputer) extract(bp *bytes.Buffer) {
 
         //一头一尾写头信息，节省硬盘
         buf = append(buf, '\n')
-        fout.Write(buf)
+        //fout.Write(buf)
         nn, err := io.Copy(fout, r)
         if err != nil {
             loglib.Warning(fmt.Sprintf("save %s_%s_%s error:%s, saved:%d", header["ip"], header["hour"], header["id"], err, nn))
         }
-        fout.Write(buf)
+        //fout.Write(buf)
 
         //单独存一份header便于查数
         fout = f.getWriter(f.headerWriters, f.headerDir, writerKey)

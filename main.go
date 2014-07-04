@@ -3,6 +3,7 @@ import (
     "os"
     "fmt"
     "runtime"
+    "runtime/pprof"
     // "bytes"
     // "time"
     "logd/monitor"
@@ -11,10 +12,26 @@ import (
     // "strconv"
     // "strings"
     "logd/loglib"
+    "flag"
+    "log"
 )
 func main() {
     runtime.GOMAXPROCS(runtime.NumCPU())
-    cfgFile := os.Args[2]
+
+    var cpuProfile = flag.String("cpuprofile", "", "profile file")
+    var memProfile = flag.String("memprofile", "", "mem profile")
+    flag.Parse()
+
+    if *cpuProfile != "" {
+        f, err := os.Create(*cpuProfile)
+        if err != nil {
+            log.Fatal(err)
+        }   
+        pprof.StartCPUProfile(f)
+        defer pprof.StopCPUProfile()
+    }           
+
+    cfgFile := flag.Arg(1)
     cfg := lib.ReadConfig(cfgFile)
     loglib.Init(cfg["logAgent"])
     hbPort, ok := cfg["monitor"]["hb_port"]
@@ -24,7 +41,7 @@ func main() {
 
     savePid()
 
-	switch os.Args[1] {
+	switch flag.Arg(0) {
 	case "logd":
 		logdGo(cfg)
 
@@ -51,6 +68,14 @@ func main() {
 		os.Exit(1)
 	}
 
+    if *memProfile != "" {
+        f, err := os.Create(*memProfile)
+        if err != nil {
+            log.Fatal(err)
+        }
+        pprof.WriteHeapProfile(f)
+        f.Close()
+    }
 }
 
 func savePid() {
