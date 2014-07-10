@@ -183,7 +183,7 @@ func (s *Sender) writeToFile(data bytes.Buffer) {
     loglib.Info(fmt.Sprintf("sender%d save pack %s to file %s len:%d", s.id, packId, filename, len(d) ))
 	err = ioutil.WriteFile(filename, d, 0666)
 	if (err != nil) {
-        loglib.Error("write to file " + filename + " error:" + err.Error())
+        loglib.Warning("write to file " + filename + " error:" + err.Error())
 		lib.CheckError(err)
 	}else{
         //追加fileCacheList

@@ -11,6 +11,7 @@ import (
    "os"
    "os/exec"
    "path/filepath"
+   "sync"
 )
 
 type NetLog struct {
@@ -18,11 +19,13 @@ type NetLog struct {
     level int
     addr string     //tcp address
     ip string       //self ip
+    mutex *sync.Mutex
 }
 
 func NewNetLog(addr string, level int) *NetLog {
     conn, _ := getConnection(addr)
-    return &NetLog{conn, level, addr, getIp()}
+    mutex := &sync.Mutex{}
+    return &NetLog{conn, level, addr, getIp(), mutex}
 }
 
 func getIp() string {
@@ -68,14 +71,18 @@ func (l *NetLog) logging(level int, msg string) {
         _, err = l.conn.Write(data)
         if err != nil {
             log.Println("send log failed: ", msg)
+            l.mutex.Lock()
             l.conn, _ = getConnection(l.addr)    //重连
+            l.mutex.Unlock()
         }else{
             log.Println("send log :" + msg)
         }
     }
 
     if l.conn == nil {
+        l.mutex.Lock()
         l.conn, _ = getConnection(l.addr)    //重连
+        l.mutex.Unlock()
     }
 
 }
