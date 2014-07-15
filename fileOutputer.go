@@ -49,7 +49,7 @@ func FileOutputerInit(buffer chan bytes.Buffer, saveDir string) (f fileOutputer)
     f.headerWriters = make(map[string]*os.File)
     f.checkTime = time.Now().Add(10 * time.Minute)
 
-    f.wq = lib.NewWaitQuit("file outputer")
+    f.wq = lib.NewWaitQuit("file outputer", -1)
 	return f
 }
 
@@ -60,6 +60,8 @@ func (f *fileOutputer) Start() {
         }
     
         f.ic.SaveStatus()
+        f.closeWriters(f.writers)
+        f.closeWriters(f.headerWriters)
         f.wq.AllDone()
     }()
 
@@ -109,17 +111,20 @@ func (f *fileOutputer) extract(bp *bytes.Buffer) {
 
         //单独存一份header便于查数
         fout = f.getWriter(f.headerWriters, f.headerDir, writerKey)
-        fout.Write(buf)
+        n, err := fout.Write(buf)
+        if err != nil {
+            loglib.Info(fmt.Sprintf("writer header %s %d %s", writerKey, n, err.Error()))
+        }
 
         if done  || time.Now().Unix() > f.checkTime.Unix() {
             hourFinish, _ := f.ic.Check()
             for ip, hours := range hourFinish {
                 for _, hour := range hours {
                     writerKey = ip + "_" + hour
-                    f.closeWriter(f.writers, writerKey)
-                    f.closeWriter(f.headerWriters, writerKey)
                 }
             }
+            f.closeWriters(f.writers)
+            f.closeWriters(f.headerWriters)
             f.checkTime.Add(10 * time.Minute)
         }
 
@@ -131,7 +136,7 @@ func (f *fileOutputer) getWriter(writers map[string]*os.File, parentDir string, 
     w, ok := writers[key]
     if !ok || w == nil {
         fname := filepath.Join(parentDir, key)
-        w1, err := os.Create(fname)
+        w1, err := os.OpenFile(fname, os.O_WRONLY | os.O_APPEND | os.O_CREATE, 0666)
         writers[key] = w1
         w = w1
         if err != nil {
@@ -149,4 +154,14 @@ func (f *fileOutputer) closeWriter(writers map[string]*os.File, key string) {
         }
         delete(writers, key)
     }
+}
+//关闭全部writer
+func (f *fileOutputer) closeWriters(writers map[string]*os.File) {
+    for key, w := range writers {
+        if w != nil {
+            w.Close()
+        }
+        delete(writers, key)
+    }
+
 }

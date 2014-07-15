@@ -103,7 +103,7 @@ func (e *etlOutputer) runEtl(spiderList string, colsFile string) {
         wg.Wait()
     }()
 
-    for i:=0; i<2; i++ {
+    for i:=0; i<5; i++ {
         wg.Add(1)
         go e.doEtl(fkeyChan, e.dataDir, e.etlDir, e.etlDoneDir, e.etlFailDir, spiderList, colsFile, wg)
     }
@@ -183,7 +183,7 @@ func (e *etlOutputer) getWriter(writers map[string]*os.File, parentDir string, k
         writers[key] = w1
         w = w1
         if err != nil {
-            loglib.Error(fmt.Sprintf("file outputer create writer: %s error: %s", fname, err.Error()))
+            loglib.Error(fmt.Sprintf("etl outputer create writer: %s error: %s", fname, err.Error()))
         }
     }
     return w
