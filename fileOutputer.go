@@ -47,7 +47,7 @@ func FileOutputerInit(buffer chan bytes.Buffer, saveDir string) (f fileOutputer)
 
     f.writers = make(map[string]*os.File)
     f.headerWriters = make(map[string]*os.File)
-    f.checkTime = time.Now().Add(10 * time.Minute)
+    f.checkTime = time.Now().Add(2 * time.Minute)
 
     f.wq = lib.NewWaitQuit("file outputer", -1)
 	return f
@@ -125,7 +125,7 @@ func (f *fileOutputer) extract(bp *bytes.Buffer) {
             }
             f.closeWriters(f.writers)
             f.closeWriters(f.headerWriters)
-            f.checkTime.Add(10 * time.Minute)
+            f.checkTime.Add(2 * time.Minute)
         }
 
         r.Close()

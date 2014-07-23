@@ -266,7 +266,7 @@ func (s Sender) sendData(data []byte, conn *net.TCPConn) bool {
             return false
         }
     }else{
-        loglib.Error(fmt.Sprintf("write pack %s error:%s", packId, err.Error()))
+        loglib.Warning(fmt.Sprintf("write pack %s error:%s", packId, err.Error()))
     }
 	return false
 }

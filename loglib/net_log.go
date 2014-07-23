@@ -60,28 +60,30 @@ func getConnection(addr string) (*net.TCPConn, error) {
 }
 
 func (l *NetLog) logging(level int, msg string) {
-    if level >= 0  && level < len(prefixes) && l.conn != nil {
-        m := map[string]string{"time": time.Now().Format("2006/01/02 15:04:05"), "type": prefixes[level], "msg":msg, "ip": l.ip, "port": HeartBeatPort}
-        data, err := json.Marshal(m)
-        if err != nil {
-            log.Println("marshal net log error:", err)
-            return
-        }
-        data = tcp_pack.Pack(data)
-        _, err = l.conn.Write(data)
-        if err != nil {
-            log.Println("send log failed: ", msg)
-            l.mutex.Lock()
-            l.conn, _ = getConnection(l.addr)    //重连
-            l.mutex.Unlock()
-        }else{
-            log.Println("send log :" + msg)
-        }
-    }
-
-    if l.conn == nil {
+    if level >= 0  && level < len(prefixes) {
         l.mutex.Lock()
-        l.conn, _ = getConnection(l.addr)    //重连
+
+        if l.conn == nil {
+            l.conn, _ = getConnection(l.addr)    //重连一次
+        }
+
+        if l.conn != nil {
+            m := map[string]string{"time": time.Now().Format("2006/01/02 15:04:05"), "type": prefixes[level], "msg":msg, "ip": l.ip, "port": HeartBeatPort}
+            data, err := json.Marshal(m)
+            if err != nil {
+                log.Println("marshal net log error:", err)
+                return
+            }
+            data = tcp_pack.Pack(data)
+            _, err = l.conn.Write(data)
+            if err != nil {
+                log.Println("send log failed: ", msg, "error:", err)
+            }else{
+                log.Println("send log :" + msg)
+            }
+        }else{
+            log.Println("send log failed: ", msg, "error: no connection")
+        }
         l.mutex.Unlock()
     }
 
