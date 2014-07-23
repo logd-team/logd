@@ -140,6 +140,7 @@ loop:
                         delete(t.footPrint, code)
                     }
                 }
+                t.saveFootPrint()
                 t.mutex.Unlock()
                 ch2 = time.After(time.Hour)          //用于定时任务
         }

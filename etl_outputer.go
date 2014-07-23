@@ -168,6 +168,7 @@ func (e *etlOutputer) runEtl(spiderList string, colsFile string, hostsList strin
                 }
                 e.closeWriters(e.writers)
                 e.closeWriters(e.headerWriters)
+                e.ic.SaveStatus()
                 nextCheckTime = time.Now().Add(2 * time.Minute)
             }
 
