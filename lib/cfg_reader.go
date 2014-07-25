@@ -45,5 +45,6 @@ func ReadConfig(cfgFile string) map[string]map[string]string {
             config[section][key] = val
         }
     }
+    fin.Close()
     return config
 }
