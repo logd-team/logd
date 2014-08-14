@@ -16,13 +16,13 @@ type Receiver struct {
 	sendBuffer chan bytes.Buffer
 	logList *list.List
     listBufferSize int      //多少条日志发送一次
-	receiveChan chan string
+	receiveChan chan map[string]string
     nTailedLines int        //tailler重启时用于计算开始的id
     wq *lib.WaitQuit
 }
 
 //工厂初始化函数
-func ReceiverInit(buffer chan bytes.Buffer,c chan string, listBufferSize int, nTailedLines int) (r Receiver) {
+func ReceiverInit(buffer chan bytes.Buffer,c chan map[string]string, listBufferSize int, nTailedLines int) (r Receiver) {
 	// var r Receiver
 	r.sendBuffer = buffer
 	r.logList = list.New()
@@ -69,11 +69,9 @@ func (r Receiver) writeList() {
     var id = r.initId()
     ip := lib.GetIp()
     var changed = false
-    var hourFmt = "2006010215"
-    var hour = time.Now().Format(hourFmt)
 
-	for logLine := range r.receiveChan {
-
+	for logMap := range r.receiveChan {
+        logLine := logMap["line"]
         changed = false
 		
         if logLine == "logfile changed" {
@@ -86,6 +84,8 @@ func (r Receiver) writeList() {
         //因此每小时只有最后一个包比listBufferSize小
         //如果quit时包小于listBufferSize就丢弃，重启后再读
 		if nLines >= r.listBufferSize || changed {
+            hour := logMap["hour"]
+
 			b := r.clearList()
 			//r.sendBuffer <- b
             ed := time.Now()
@@ -121,15 +121,6 @@ func (r Receiver) writeList() {
 		}
 
         if changed {
-            now := time.Now()
-            tStr := now.Format(hourFmt)
-            //发现日志rotate了，但是时间未变，则强制改为下一小时
-            if tStr == hour {
-                hour = now.Add(time.Hour).Format(hourFmt)
-            }else{
-                hour = tStr
-            }
-
             id = 1   //每小时id刷新
         }
 

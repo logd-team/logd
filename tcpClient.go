@@ -7,11 +7,11 @@ import (
 )
 
 type TcpClient struct {
-	logChan chan string
+	logChan chan map[string]string
 }
 
 //工厂初始化函数
-func TcpClientInit(c chan string) (tc TcpClient) {
+func TcpClientInit(c chan map[string]string) (tc TcpClient) {
 	// var tc TcpClient
 	tc.logChan = c
 
@@ -35,7 +35,7 @@ func (tc TcpClient) StartLogAgentServer() {
 	}
 }
 
-func (tc TcpClient) handleConnnection(conn net.Conn,c chan string) {
+func (tc TcpClient) handleConnnection(conn net.Conn,c chan map[string]string) {
 	defer conn.Close()
 
 	conn.SetReadDeadline(time.Now().Add(2 * time.Minute))
@@ -49,6 +49,7 @@ func (tc TcpClient) handleConnnection(conn net.Conn,c chan string) {
 	}
 	msg := string(request)
 	fmt.Println(msg)
-	c <- msg
+    m := map[string]string{"hour":time.Now().Format("2006010215"), "line":msg}
+	c <- m
 	conn.Write([]byte("ok"))
 }

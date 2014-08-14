@@ -9,7 +9,6 @@ result := s.sendData(data.Bytes(),s.connnection.getConn())
 */
 
 import (
-    "fmt"
 	"net"
 	"logd/lib"
 	"logd/loglib"
@@ -48,7 +47,6 @@ func (sc *SingleConnection) initConnection() {
  		loglib.Error("init err:" + err.Error())
  	}else {
  		sc.conn = newConn
-        loglib.Info(fmt.Sprintf("initialed connection's remote addr %v",sc.conn))
  	}
 
  	lib.CheckError(err)

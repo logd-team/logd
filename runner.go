@@ -12,7 +12,7 @@ import (
 )
 func logdGo(cfg map[string]map[string]string) {
 
-	receiveChan := make(chan string)
+	receiveChan := make(chan map[string]string)
 	sendBuffer := make(chan bytes.Buffer)
 	r := ReceiverInit(sendBuffer,receiveChan, 2000, 0)
 
@@ -30,11 +30,10 @@ func logdGo(cfg map[string]map[string]string) {
 	}
 
 }
-
 func tailerGo(cfg map[string]map[string]string) {
     qlst := lib.NewQuitList()
 
-	receiveChan := make(chan string, 10000)       //非阻塞
+	receiveChan := make(chan map[string]string, 10000)       //非阻塞
 	sendBuffer := make(chan bytes.Buffer, 500)
     recvBufferSize, _ := strconv.Atoi(cfg["tail"]["recv_buffer_size"])
     tailler := NewTailler(cfg["tail"])
