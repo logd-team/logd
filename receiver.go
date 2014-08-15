@@ -85,6 +85,7 @@ func (r Receiver) writeList() {
         //如果quit时包小于listBufferSize就丢弃，重启后再读
 		if nLines >= r.listBufferSize || changed {
             hour := logMap["hour"]
+            repull, ok := logMap["repull"]   //兼容补拉
 
 			b := r.clearList()
 			//r.sendBuffer <- b
@@ -102,6 +103,10 @@ func (r Receiver) writeList() {
             m["st"] = st.Format("2006-01-02 15:04:05.000")
             m["ed"] = ed.Format("2006-01-02 15:04:05.000")
             m["elapse"] = elapse.String()
+            if ok && repull == "1" {
+                m["repull"] = "1"
+            }
+
             if changed {
                 m["done"] = "1"
                 //这种空包用于给那些日志行数正好是listBufferSize倍数的小时标记结束

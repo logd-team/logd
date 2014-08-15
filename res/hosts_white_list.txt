@@ -1,0 +1,2 @@
+^[a-z,A-Z,\.]{1,8}\.hao[12]2[23]\.com$
+www\.cliponyu\.com

@@ -76,9 +76,10 @@ func (e *etlOutputer) Start() {
     spiderList, _ := e.config["spider_list"]
     colsFile , _ := e.config["columns_file"]
     hostsList, _ := e.config["hosts_white_list"]
+    ipBlackList, _ := e.config["ip_black_list"]
 
     if colsFile != "" {
-        e.runEtl(spiderList, colsFile, hostsList)
+        e.runEtl(spiderList, colsFile, hostsList, ipBlackList)
     }else{
         loglib.Error("[error] miss columns map file!")
     }
@@ -88,7 +89,7 @@ func (e *etlOutputer) Quit() bool {
     return e.wq.Quit()
 }
 
-func (e *etlOutputer) runEtl(spiderList string, colsFile string, hostsList string) {
+func (e *etlOutputer) runEtl(spiderList string, colsFile string, hostsList string, ipBlackList string) {
     wg := &sync.WaitGroup{}
     fkeyChan := make(chan string, 100)
     defer func(){
@@ -106,7 +107,7 @@ func (e *etlOutputer) runEtl(spiderList string, colsFile string, hostsList strin
 
     for i:=0; i<5; i++ {
         wg.Add(1)
-        go e.doEtl(fkeyChan, e.dataDir, e.etlDir, e.etlDoneDir, e.etlFailDir, spiderList, colsFile, hostsList, wg)
+        go e.doEtl(fkeyChan, e.dataDir, e.etlDir, e.etlDoneDir, e.etlFailDir, spiderList, colsFile, hostsList, ipBlackList, wg)
     }
     nextCheckTime := time.Now().Add(2 * time.Minute)
     //使用range遍历，方便安全退出，只要发送方退出时关闭chan，这里就可以退出了
@@ -210,7 +211,7 @@ func (e *etlOutputer) closeWriters(writers map[string]*os.File) {
     }
 
 }
-func (e *etlOutputer) doEtl(fkeyChan chan string, logDataDir string, etlDir string, etlDoneDir string, etlFailDir string, spiderList string, colsFile string, hostsList string, wg *sync.WaitGroup) {
+func (e *etlOutputer) doEtl(fkeyChan chan string, logDataDir string, etlDir string, etlDoneDir string, etlFailDir string, spiderList string, colsFile string, hostsList string, ipBlackList string, wg *sync.WaitGroup) {
     defer func(){
         if err := recover(); err != nil {
             loglib.Error(fmt.Sprintf("doEtl() panic:%v", err))
@@ -220,7 +221,7 @@ func (e *etlOutputer) doEtl(fkeyChan chan string, logDataDir string, etlDir stri
     }()
     loglib.Info("etl routine start")
     for fkey := range fkeyChan {
-        d := etl.NewDispatcher(colsFile, etlDir, 5, fkey, hostsList)
+        d := etl.NewDispatcher(colsFile, etlDir, 5, fkey, hostsList, ipBlackList)
         g := etl.NewGlobalHao123(spiderList, 100, 200, 8, d)
         go g.Start(false)
         
