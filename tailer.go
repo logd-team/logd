@@ -318,11 +318,12 @@ func (this *Tailler) taillingCurrent(receiveChan chan map[string]string) {
     go func(){
         nextHour := this.fileHour.Add(time.Hour)
         nextHourFile := this.getLogFileByTime(nextHour)
+        timeToWait := 10 * time.Minute   //到达下一小时后，等待日志文件的最长时间，10分钟
         for {
             if quit {
                 break
             }
-            if lib.FileExists(nextHourFile) {
+            if lib.FileExists(nextHourFile) || time.Now().Sub(nextHour) > timeToWait { 
                 currFile := this.currFile
                 totalLines := this.GetTotalLines(currFile)
                 loglib.Info(fmt.Sprintf("log rotated! previous file: %s, total lines: %d", currFile, totalLines))
