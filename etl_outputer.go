@@ -221,7 +221,8 @@ func (e *etlOutputer) doEtl(fkeyChan chan string, logDataDir string, etlDir stri
     }()
     loglib.Info("etl routine start")
     for fkey := range fkeyChan {
-        d := etl.NewDispatcher(colsFile, etlDir, 5, fkey, hostsList, ipBlackList)
+        sv := etl.NewFileSaver(colsFile, etlDir, fkey)
+        d := etl.NewDispatcher(sv, 6, hostsList, ipBlackList)
         g := etl.NewGlobalHao123(spiderList, 100, 200, 8, d)
         go g.Start(false)
         
