@@ -34,15 +34,17 @@ func NewMysql(host string, port string, uname string, passwd string, db string, 
     return &Mysql{dbObj}
 }
 
-func (my *Mysql) Query(sqlStr string, args ...interface{} ) (*MysqlResult, error) {
-    rows, err := my.db.Query(sqlStr, args...)
+func (my *Mysql) Query(sqlStr string, args ...interface{} ) (result *MysqlResult,  reterr error) {
     defer func(){
-        if rows != nil {
-            rows.Close()
+        if err := recover(); err != nil {
+            log.Println(fmt.Sprintf("Mysql.Query panic:%v", err))
+            result = nil
+            reterr, _ = err.(error)
         }
     }()
 
-    result := new(MysqlResult)
+    rows, err := my.db.Query(sqlStr, args...)
+
     if err != nil {
        log.Println(err) 
        return result, err
@@ -82,16 +84,26 @@ func (my *Mysql) Query(sqlStr string, args ...interface{} ) (*MysqlResult, error
             log.Printf("scan row %d error\n", i)
         }
     }
+    if rows != nil {
+        rows.Close()
+    }
     result.NumRows = i
     return result, err
 }
 
 func (my *Mysql) Exec(sqlStr string, args ...interface{}) (MysqlResult, error) {
+    var result MysqlResult
+
+    defer func(){
+        if err := recover(); err != nil {
+            log.Println(fmt.Sprintf("Mysql.Exec panic:%v", err))
+        }
+    }()
+
     if isInsert(sqlStr) {
         sqlStr, args = makeMultiInsert(sqlStr, args...)
     }
     res, err := my.db.Exec(sqlStr, args...)
-    var result MysqlResult
     if err != nil {
         log.Println("Mysql.Exec", err)
     }else{
