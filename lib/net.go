@@ -5,6 +5,8 @@ import (
     "log"
     "runtime"
     "strings"
+    "bytes"
+    "encoding/binary"
 )
 
 func GetConnection(addr string) (*net.TCPConn, error) {
@@ -24,3 +26,13 @@ func GetConnection(addr string) (*net.TCPConn, error) {
     return conn, err
 }
 
+func IpToUint32(ip string) uint32 {
+    ipo := net.ParseIP(ip)
+    r := bytes.NewReader([]byte(ipo.To4()))
+    var ipl uint32 = 0
+    err := binary.Read(r, binary.BigEndian, &ipl)
+    if err != nil {
+        log.Println("ip to long error:", err)
+    }
+    return ipl
+}
