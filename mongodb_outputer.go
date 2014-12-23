@@ -17,6 +17,7 @@ import (
     "encoding/json"
     "logd/tcp_pack"
     "time"
+    "errors"
     "net/url"
     "gopkg.in/mgo.v2"
     "gopkg.in/mgo.v2/bson"
@@ -124,6 +125,8 @@ func (this *MongoDbOutputer) Quit() bool {
 
 func (this *MongoDbOutputer) runParse( routineId int, wg *sync.WaitGroup) {
     session := initMongoDbSession(this.mongosAddr)
+    var coll *mgo.Collection
+
     defer func(){
         if session != nil {
             session.Close()
@@ -132,34 +135,42 @@ func (this *MongoDbOutputer) runParse( routineId int, wg *sync.WaitGroup) {
         loglib.Info(fmt.Sprintf("mongodb outputer parse routine %d quit", routineId))
     }()
 
-    if session == nil {
-        loglib.Error(fmt.Sprintf("mongodb outputer parse routine %d start failed!", routineId))
-    }else{
+    dateStr := ""
 
-        dateStr := ""
-        var coll *mgo.Collection
-
-        loglib.Info(fmt.Sprintf("mongodb outputer parse routine %d start", routineId))
-        for b := range this.buffer {
-            r, packId, date, err := this.extract(&b)
-            if err == nil {
-                if date != dateStr {
-                    coll = session.DB(this.db + date).C(this.collection)   //按天分库
-                    dateStr = date
-                }
-                if !this.isUpsert {
-                    this.bulkSave(coll, r, packId, date, routineId)
+    loglib.Info(fmt.Sprintf("mongodb outputer parse routine %d start", routineId))
+    for b := range this.buffer {
+        r, packId, date, err := this.extract(&b)
+        if err == nil {
+            // 重连
+            if session == nil {
+                session = initMongoDbSession(this.mongosAddr)
+                if session == nil {
+                    coll = nil          //触发bulkSaveBson和upsertBson报错
+                    loglib.Warning(fmt.Sprintf("parse routine %s reconnect to %s failed!", routineId, this.mongosAddr))
                 }else{
-                    this.upsert(coll, r, packId, date, routineId)
+                    loglib.Warning(fmt.Sprintf("parse routine %s reconnect to %s succeed!", routineId, this.mongosAddr))
                 }
-                r.Close()
             }
+            if coll == nil || date != dateStr {
+                if session != nil {
+                    coll = session.DB(this.db + date).C(this.collection)   //按天分库
+                }
+                dateStr = date
+            }
+            if !this.isUpsert {
+                this.bulkSave(coll, r, packId, date, routineId)
+            }else{
+                this.upsert(coll, r, packId, date, routineId)
+            }
+            r.Close()
         }
     }
 }
 //重新保存先前失败的文档
 func (this *MongoDbOutputer) retrySave(wg *sync.WaitGroup) {
     session := initMongoDbSession(this.mongosAddr)
+    var coll *mgo.Collection
+
     defer func(){
         if session != nil {
             session.Close()
@@ -168,59 +179,72 @@ func (this *MongoDbOutputer) retrySave(wg *sync.WaitGroup) {
         loglib.Info("mongodb outputer retry routine quit.")
     }()
 
-    if session == nil {
-        loglib.Error("mongodb outputer retry routine start failed!")
-    }else{
+    var quit = false
+    go lib.HandleQuitSignal(func(){
+        quit = true
+    })
 
-        var quit = false
-        go lib.HandleQuitSignal(func(){
-            quit = true
-        })
-
-        loglib.Info("mongodb outputer retry routine start")
-        for !quit {
-            e := this.fileList.Remove()
-            if e != nil {
-                filename := e.Value.(string)
-                b, err := ioutil.ReadFile(filename)
+    dateStr := ""
+    loglib.Info("mongodb outputer retry routine start")
+    for !quit {
+        e := this.fileList.Remove()
+        if e != nil {
+            filename := e.Value.(string)
+            b, err := ioutil.ReadFile(filename)
+            if err != nil {
+                if _, ok := err.(*os.PathError); !ok {
+                    this.fileList.PushBack(filename)     //非路径错误，下次再试
+                }
+                loglib.Error(fmt.Sprintf("load cache %s error:%v", filename, err))
+            }else{
+                m := bson.M{}
+                err = json.Unmarshal(b, &m)
                 if err != nil {
-                    if _, ok := err.(*os.PathError); !ok {
-                        this.fileList.PushBack(filename)     //非路径错误，下次再试
-                    }
-                    loglib.Error(fmt.Sprintf("load cache %s error:%v", filename, err))
+                    loglib.Error(fmt.Sprintf("unmarshar %s error:%v", filename, err))
                 }else{
-                    m := bson.M{}
-                    err = json.Unmarshal(b, &m)
-                    if err != nil {
-                        loglib.Error(fmt.Sprintf("unmarshar %s error:%v", filename, err))
+                    // 重连
+                    if session == nil {
+                        session = initMongoDbSession(this.mongosAddr)
+                        if session == nil {
+                            coll = nil          //触发bulkSaveBson和upsertBson报错
+                            loglib.Warning(fmt.Sprintf("retry routine reconnect to %s failed!", this.mongosAddr))
+                        }else{
+                            loglib.Warning(fmt.Sprintf("retry routine reconnect to %s succeed!", this.mongosAddr))
+                        }
+                    }
+                    tp, _ := m["type"].(string)
+                    date, _ := m["date"].(string)
+                    if coll == nil || date != dateStr {
+                        if session != nil {
+                            coll = session.DB(this.db + date).C(this.collection)   //按天分库
+                        }
+                        dateStr = date
+                    }
+                    if tp == "bulk" {
+                        data, _ := m["data"].([]interface{})
+                        err = this.bulkSaveBson(coll, data...)
                     }else{
-                        tp, _ := m["type"].(string)
-                        date, _ := m["date"].(string)
-                        coll := session.DB(this.db + date).C(this.collection)
-                        if tp == "bulk" {
-                            data, _ := m["data"].([]interface{})
-                            err = this.bulkSaveBson(coll, data...)
-                        }else{
-                            data, _ := m["data"].(map[string]interface{})
-                            sel := bson.M{this.transactionIdKey : data[this.transactionIdKey]}
-                            up := bson.M{"$set" : data}
-                            _, err = this.upsertBson(coll, sel, up)
-                        }
+                        data, _ := m["data"].(map[string]interface{})
+                        sel := bson.M{this.transactionIdKey : data[this.transactionIdKey]}
+                        up := bson.M{"$set" : data}
+                        _, err = this.upsertBson(coll, sel, up)
+                    }
+                    if err != nil {
+                        this.fileList.PushBack(filename)
+                        loglib.Error(fmt.Sprintf("re-save cache %s error:%v", filename, err))
+                    }else{
+                        err = os.Remove(filename)
                         if err != nil {
-                            this.fileList.PushBack(filename)
-                            loglib.Error(fmt.Sprintf("re-save cache %s error:%v", filename, err))
+                            loglib.Error(fmt.Sprintf("remove file: %s error:%v", filename, err));
                         }else{
-                            err = os.Remove(filename)
-                            if err != nil {
-                                loglib.Error(fmt.Sprintf("remove file: %s error:%v", filename, err));
-                            }
-
+                            loglib.Info(fmt.Sprintf("cache file: %s send out", filename));
                         }
+
                     }
                 }
             }
-            time.Sleep(500 * time.Millisecond)
         }
+        time.Sleep(500 * time.Millisecond)
     }
 }
 
@@ -287,19 +311,25 @@ func (this *MongoDbOutputer) bulkSave(coll *mgo.Collection, r io.Reader, packId 
 
     loglib.Info(fmt.Sprintf("save pack %s: inserted:%d, cached:%d, discard %d items", packId, nInserted, nCached, nDiscard))
 }
-func (this *MongoDbOutputer) bulkSaveBson(coll *mgo.Collection, docs ...interface{}) error {
-    err := coll.Insert(docs...)
-    if err != nil {
-        tmp := make([]string, 0)
-        for _, doc := range docs {
-            m, _ := doc.(bson.M)
-            tid, _ := m[this.transactionIdKey].(string)
-            tmp = append(tmp, tid)
+func (this *MongoDbOutputer) bulkSaveBson(coll *mgo.Collection, docs ...interface{}) (err error) {
+    if coll != nil {
+        err = coll.Insert(docs...)
+        if err != nil {
+            tmp := make([]string, 0)
+            for _, doc := range docs {
+                m, _ := doc.(bson.M)
+                tid, _ := m[this.transactionIdKey].(string)
+                tmp = append(tmp, tid)
+            }
+            tids := strings.Join(tmp, ",")
+            loglib.Error(fmt.Sprintf("save %d bsons [%s] error:%v", len(docs), tids, err))
         }
-        tids := strings.Join(tmp, ",")
-        loglib.Error(fmt.Sprintf("save %d bsons [%s] error:%v", len(docs), tids, err))
+    }else{
+        err = errors.New("bulk: collection is nil")
+        loglib.Error(fmt.Sprintf("save bsons error:%v", err))
+
     }
-    return err
+    return
 }
 //更新插入，按字段更新
 func (this *MongoDbOutputer) upsert(coll *mgo.Collection, r io.Reader, packId string, date string, routineId int) {
@@ -331,16 +361,23 @@ func (this *MongoDbOutputer) upsert(coll *mgo.Collection, r io.Reader, packId st
     loglib.Info(fmt.Sprintf("save pack %s: inserted:%d, updated:%d, cached:%d, discard %d items", packId, nInserted, nUpdated, nCached, nDiscard))
 }
 func (this *MongoDbOutputer) upsertBson(coll *mgo.Collection, selector interface{}, doc interface{}) (info *mgo.ChangeInfo, err error) {
-    info, err = coll.Upsert(selector, doc)
     m, _ := selector.(bson.M)
     tid, _ := m[this.transactionIdKey].(string)
 
-    if err != nil {
-        loglib.Error(fmt.Sprintf("save bson [%s] error:%v", tid, err))
-    }else{
-        if info.Updated > 0 {
-            loglib.Info(fmt.Sprintf("bson [%s] updated", tid))
+    if coll != nil {
+        info, err = coll.Upsert(selector, doc)
+
+        if err != nil {
+            loglib.Error(fmt.Sprintf("save bson [%s] error:%v", tid, err))
+        }else{
+            if info.Updated > 0 {
+                loglib.Info(fmt.Sprintf("bson [%s] updated", tid))
+            }
         }
+    }else{
+        info = &mgo.ChangeInfo{}
+        err = errors.New("upsert: collection is nil")
+        loglib.Error(fmt.Sprintf("save bson [%s] error:%v", tid, err))
     }
     return
 }
