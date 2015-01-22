@@ -224,7 +224,7 @@ outer:
             buf = append(buf, headerBuf...)
             header,_, err := tcp_pack.ExtractHeader(buf)
             if err != nil {
-                loglib.Error("wrong format header" + err.Error())
+                loglib.Error("wrong format header " + string(headerBuf) + " " + err.Error())
                 conn.Write([]byte("wrong header"))
                 break
             }

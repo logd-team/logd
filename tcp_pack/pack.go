@@ -72,7 +72,10 @@ func Packing(data []byte, info map[string]string, hasHeader bool) []byte {
         content = data
     }
     header.PackLen = len(content)
-    headerStr, _ := json.Marshal(header)
+    headerStr, err := json.Marshal(header)
+    if err != nil {
+        log.Println("marshal header: ", header , "error", err)
+    }
     buf := make([]byte, 4)
     binary.PutUvarint(buf, uint64(len(headerStr)))
     buf = append(buf, []byte(headerStr)...)
