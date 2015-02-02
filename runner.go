@@ -186,3 +186,31 @@ func etlcollectorGo(cfg map[string]map[string]string) {
     qlst.ExecQuit()
 }
 
+func mgocollectorGo(cfg map[string]map[string]string) {
+    qlst := lib.NewQuitList()
+
+	bufferChan := make(chan bytes.Buffer, 300)   //mongodb写入并发可能开的比较高
+	addr := cfg["mgocollector"]["listen"]
+
+	mgo := MongoDbOutputerInit(bufferChan, cfg["mgocollector"])
+	go mgo.Start()
+
+	tr := TcpReceiverInit(bufferChan,addr)
+	go tr.Start()
+    //一定要发送方先退出
+    qlst.Append(tr.Quit)
+    qlst.Append(mgo.Quit)
+	
+    // heart beat
+    port, _ := cfg["monitor"]["hb_port"]
+    monAddr, _ := cfg["monitor"]["mon_addr"]
+    if port != "" && monAddr != "" {
+        hb := heart_beat.NewHeartBeat(port, monAddr, "mgocollector")
+        go hb.Run()
+        qlst.Append(hb.Quit)
+    }
+
+    qlst.HandleQuitSignal()
+    qlst.ExecQuit()
+}
+

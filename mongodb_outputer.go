@@ -27,6 +27,7 @@ type MongoDbOutputer struct {
     
 	buffer     chan bytes.Buffer
     mongosAddr string
+    session *mgo.Session
     db         string
     collection string
     isUpsert     bool
@@ -44,6 +45,12 @@ func MongoDbOutputerInit(buffer chan bytes.Buffer, config map[string]string) (mo
     mo.mongosAddr, _ = config["mongos"]
     mo.db         , _ = config["db"]
     mo.collection , _ = config["collection"]
+    mo.session = initMongoDbSession(mo.mongosAddr)
+    //暂时出错直接退出
+    if mo.session == nil {
+        loglib.Error("init mongodb session failed")
+        os.Exit(1)
+    }
 
     upsert, _ := config["upsert"]
     if upsert == "true" {
@@ -90,6 +97,43 @@ func initMongoDbSession(mongosAddr string) *mgo.Session {
     session.SetSafe(&mgo.Safe{W:2})         //设置write concern
     return session
 }
+//用于检验session可用性并适时重连的routine func
+//用于重连main session
+func (this *MongoDbOutputer) reConnMongoDb() {
+    nPingFail := 0   //ping失败次数
+    reDial := false
+    for {
+        reDial = false
+        if this.session == nil {
+            //session未初始化
+            reDial = true
+        }else if(this.session.Ping() != nil) {
+            //session连接丢失
+            nPingFail++
+            if nPingFail == 3 {
+                reDial = true
+            }
+        }
+
+        if reDial {
+            nPingFail = 0
+            this.session = initMongoDbSession(this.mongosAddr)
+            if this.session == nil {
+                loglib.Info("session re-dial failed!")
+            }else{
+                loglib.Info("session re-dial success!")
+            }
+        }
+        time.Sleep(time.Second)
+    }
+}
+//用于routine重新clone session, main session未重连，则继续用旧的session
+func (this *MongoDbOutputer) reCloneRoutineSession(psession **mgo.Session) {
+    if this.session != nil {
+        //re-clone a session
+        *psession = this.session.Clone()
+    }
+}
 
 func (this *MongoDbOutputer) Start() {
     wg := &sync.WaitGroup{}
@@ -97,11 +141,16 @@ func (this *MongoDbOutputer) Start() {
         if err := recover(); err != nil {
             loglib.Error(fmt.Sprintf("mongodb outputer panic:%v", err))
         }
+        if this.session != nil {
+            this.session.Close()
+        }
         this.wq.AllDone()
     }()
 
     this.reloadFileCache()
-    
+   
+    go this.reConnMongoDb()
+
     wg.Add(this.savers)
 
     for i:=0; i<this.savers; i++ {
@@ -111,7 +160,7 @@ func (this *MongoDbOutputer) Start() {
     nRetry := this.savers / 6 + 1
     wg.Add(nRetry)
     for i:=0; i<nRetry; i++ {
-        go this.retrySave(wg)
+        go this.retrySave(wg, i)
     }
 
     wg.Wait()
@@ -124,8 +173,11 @@ func (this *MongoDbOutputer) Quit() bool {
 }
 
 func (this *MongoDbOutputer) runParse( routineId int, wg *sync.WaitGroup) {
-    session := initMongoDbSession(this.mongosAddr)
-    var coll *mgo.Collection
+    var session *mgo.Session
+    //routine一般都要copy或clone session，clone能保证一致性
+    if this.session != nil {
+        session = this.session.Clone()
+    }
 
     defer func(){
         if session != nil {
@@ -135,48 +187,35 @@ func (this *MongoDbOutputer) runParse( routineId int, wg *sync.WaitGroup) {
         loglib.Info(fmt.Sprintf("mongodb outputer parse routine %d quit", routineId))
     }()
 
-    dateStr := ""
-
     loglib.Info(fmt.Sprintf("mongodb outputer parse routine %d start", routineId))
     for b := range this.buffer {
         r, packId, date, err := this.extract(&b)
         if err == nil {
-            // 重连
-            if session == nil {
-                session = initMongoDbSession(this.mongosAddr)
-                if session == nil {
-                    coll = nil          //触发bulkSaveBson和upsertBson报错
-                    loglib.Warning(fmt.Sprintf("parse routine %s reconnect to %s failed!", routineId, this.mongosAddr))
-                }else{
-                    loglib.Warning(fmt.Sprintf("parse routine %s reconnect to %s succeed!", routineId, this.mongosAddr))
-                }
-            }
-            if coll == nil || date != dateStr {
-                if session != nil {
-                    coll = session.DB(this.db + date).C(this.collection)   //按天分库
-                }
-                dateStr = date
-            }
             if !this.isUpsert {
-                this.bulkSave(coll, r, packId, date, routineId)
+                this.bulkSave(&session, r, packId, date, routineId)
             }else{
-                this.upsert(coll, r, packId, date, routineId)
+                this.upsert(&session, r, packId, date, routineId)
             }
             r.Close()
         }
     }
 }
 //重新保存先前失败的文档
-func (this *MongoDbOutputer) retrySave(wg *sync.WaitGroup) {
-    session := initMongoDbSession(this.mongosAddr)
+func (this *MongoDbOutputer) retrySave(wg *sync.WaitGroup, routineId int) {
+    var session *mgo.Session
     var coll *mgo.Collection
+    //routine一般都要copy或clone session，clone能保证一致性
+    if this.session != nil {
+        session = this.session.Clone()
+    }
+
 
     defer func(){
         if session != nil {
             session.Close()
         }
         wg.Done()
-        loglib.Info("mongodb outputer retry routine quit.")
+        loglib.Info(fmt.Sprintf("mongodb outputer retry routine %d quit.", routineId))
     }()
 
     var quit = false
@@ -185,7 +224,7 @@ func (this *MongoDbOutputer) retrySave(wg *sync.WaitGroup) {
     })
 
     dateStr := ""
-    loglib.Info("mongodb outputer retry routine start")
+    loglib.Info(fmt.Sprintf("mongodb outputer retry routine %d start", routineId))
     for !quit {
         e := this.fileList.Remove()
         if e != nil {
@@ -202,22 +241,10 @@ func (this *MongoDbOutputer) retrySave(wg *sync.WaitGroup) {
                 if err != nil {
                     loglib.Error(fmt.Sprintf("unmarshar %s error:%v", filename, err))
                 }else{
-                    // 重连
-                    if session == nil {
-                        session = initMongoDbSession(this.mongosAddr)
-                        if session == nil {
-                            coll = nil          //触发bulkSaveBson和upsertBson报错
-                            loglib.Warning(fmt.Sprintf("retry routine reconnect to %s failed!", this.mongosAddr))
-                        }else{
-                            loglib.Warning(fmt.Sprintf("retry routine reconnect to %s succeed!", this.mongosAddr))
-                        }
-                    }
                     tp, _ := m["type"].(string)
                     date, _ := m["date"].(string)
-                    if coll == nil || date != dateStr {
-                        if session != nil {
-                            coll = session.DB(this.db + date).C(this.collection)   //按天分库
-                        }
+                    if date != dateStr && session != nil {
+                        coll = session.DB(this.db + date).C(this.collection)   //按天分库
                         dateStr = date
                     }
                     if tp == "bulk" {
@@ -232,6 +259,13 @@ func (this *MongoDbOutputer) retrySave(wg *sync.WaitGroup) {
                     if err != nil {
                         this.fileList.PushBack(filename)
                         loglib.Error(fmt.Sprintf("re-save cache %s error:%v", filename, err))
+                        if session.Ping() != nil {
+                            //refresh go-routine's session if possible
+                            this.reCloneRoutineSession(&session)
+                            if session.Ping() == nil {
+                                loglib.Info(fmt.Sprintf("retry routine %d re-conn", routineId))
+                            }
+                        }
                     }else{
                         err = os.Remove(filename)
                         if err != nil {
@@ -268,7 +302,14 @@ func (this *MongoDbOutputer) extract(bp *bytes.Buffer) (r io.ReadCloser, packId 
     return 
 }
 //批量插入
-func (this *MongoDbOutputer) bulkSave(coll *mgo.Collection, r io.Reader, packId string, date string, routineId int) {
+func (this *MongoDbOutputer) bulkSave(psession **mgo.Session, r io.Reader, packId string, date string, routineId int) {
+
+    var coll *mgo.Collection = nil
+
+    if *psession != nil {
+        coll = (*psession).DB(this.db + date).C(this.collection)   //按天分库
+    }
+
     scanner := bufio.NewScanner(r)
 
     arr := make([]interface{}, 0)
@@ -287,6 +328,14 @@ func (this *MongoDbOutputer) bulkSave(coll *mgo.Collection, r io.Reader, packId 
                 if err != nil {
                     this.cacheData(arr, "bulk", date, routineId)
                     nCached += cnt
+                    //ping fail, re-connect, clone main session
+                    if (*psession).Ping() != nil {
+                        //refresh go-routine's session if possible
+                        this.reCloneRoutineSession(psession)
+                        if (*psession).Ping() == nil {
+                            loglib.Info(fmt.Sprintf("parse routine %d re-conn", routineId))
+                        }
+                    }
                 }else{
                     nInserted += cnt
                 }
@@ -304,6 +353,14 @@ func (this *MongoDbOutputer) bulkSave(coll *mgo.Collection, r io.Reader, packId 
         if err != nil {
             this.cacheData(arr, "bulk", date, routineId)
             nCached += cnt
+            //ping fail, re-connect, clone main session
+            if (*psession).Ping() != nil {
+                //refresh go-routine's session if possible
+                this.reCloneRoutineSession(psession)
+                if (*psession).Ping() == nil {
+                    loglib.Info(fmt.Sprintf("parse routine %d re-conn", routineId))
+                }
+            }
         }else{
             nInserted += cnt
         }
@@ -332,12 +389,16 @@ func (this *MongoDbOutputer) bulkSaveBson(coll *mgo.Collection, docs ...interfac
     return
 }
 //更新插入，按字段更新
-func (this *MongoDbOutputer) upsert(coll *mgo.Collection, r io.Reader, packId string, date string, routineId int) {
+func (this *MongoDbOutputer) upsert(psession **mgo.Session, r io.Reader, packId string, date string, routineId int) {
     nDiscard := 0
     nCached := 0
     nUpdated := 0
     nInserted := 0
+    var coll *mgo.Collection = nil
 
+    if *psession != nil {
+        coll = (*psession).DB(this.db + date).C(this.collection)   //按天分库
+    }
     scanner := bufio.NewScanner(r)
     for scanner.Scan() {
         line := scanner.Text()
@@ -349,6 +410,14 @@ func (this *MongoDbOutputer) upsert(coll *mgo.Collection, r io.Reader, packId st
             if err != nil {
                 this.cacheData(m, "upsert", date, routineId)
                 nCached++
+                //ping fail, re-connect, clone main session
+                if (*psession).Ping() != nil {
+                    //refresh go-routine's session if possible
+                    this.reCloneRoutineSession(psession)
+                    if (*psession).Ping() == nil {
+                        loglib.Info(fmt.Sprintf("parse routine %d re-conn", routineId))
+                    }
+                }
             }else{
                 nInserted++
                 nUpdated += info.Updated
@@ -429,6 +498,9 @@ func (this *MongoDbOutputer) parseLogLine(line string) (m bson.M) {
         p1 = 0
     }
     ipInLong := lib.IpToUint32(line[p1+1 : p2])
+    // host第一段
+    p1 = strings.Index(line, ".")
+    hostPrefix := line[:p1] + "_"
     //截取时间
     p1 = strings.Index(line, "[")
     p2 = strings.Index(line, "]")
@@ -465,12 +537,16 @@ func (this *MongoDbOutputer) parseLogLine(line string) (m bson.M) {
             if tid != "" {
                 //参数对放入bson
                 for k, _ := range q {
-                    m[k] = q.Get(k)
+                    newK := k
+                    if k != this.transactionIdKey {
+                        newK = hostPrefix + k
+                    }
+                    m[newK] = q.Get(k)
                 }
-                m["ipinlong"] = ipInLong
-                m["time"] = timestamp
-                m["day"] = day
-                m["hour"] = hour
+                m[hostPrefix + "ipinlong"] = ipInLong
+                m[hostPrefix + "time"] = timestamp
+                m[hostPrefix + "day"] = day
+                m[hostPrefix + "hour"] = hour
             }
         }
     }

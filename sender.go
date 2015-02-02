@@ -259,8 +259,8 @@ func (s Sender) sendData(data []byte, conn *net.TCPConn) bool {
             return true
         }else if(string(temp) == "wrong header"){
             //包头错误,丢弃
-            loglib.Info(packId + " has wrong header")
-            return true
+            loglib.Info(packId + " has wrong header, retry later!")
+            return false
         }else {//发送失败
             //报警
             return false

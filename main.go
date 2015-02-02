@@ -58,6 +58,8 @@ func main() {
 		
 	case "etlcollector":
 		etlcollectorGo(cfg)
+	case "mgocollector":
+		mgocollectorGo(cfg)
     case "monitor":
         mon := monitor.New(cfgFile)
         mon.Run()
