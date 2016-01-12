@@ -6,3 +6,6 @@ Logd is an open-source distributed, reliable, high-performance and available ser
 * Written in [Go](http://golang.org)
 * Easy to get running (3 or 4 commands)
 * no other dependencies
+
+## download
+please download the zip file directly.
